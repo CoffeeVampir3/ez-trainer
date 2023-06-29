@@ -9,6 +9,8 @@ Datasets are expected to be json or jsonl format right now. Models should be the
 
 `pip install -r requirements.txt`
 
+(This does not install torch, you should install that yourself. <https://pytorch.org/get-started/locally/>)
+
 ## Run:
 
 `python train_module.py`
