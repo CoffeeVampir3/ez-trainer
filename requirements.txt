@@ -1,5 +1,5 @@
 transformers
 datasets
-peft
+git+https://github.com/huggingface/peft
 accelerate
 gradio
