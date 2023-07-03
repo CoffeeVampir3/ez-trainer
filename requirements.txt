@@ -3,3 +3,7 @@ datasets
 git+https://github.com/huggingface/peft
 accelerate
 gradio
+sentencepiece
+protobuf
+bitsandbytes
+scipy
