@@ -9,31 +9,6 @@ from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, Ta
 from accelerate import infer_auto_device_map
 import pathlib
 
-# Borrowed from peft.utils.get_peft_model_state_dict
-def get_peft_state_maybe_zero_3(named_params, bias):
-    if bias == "none":
-        to_return = {k: t for k, t in named_params if "lora_" in k}
-    elif bias == "all":
-        to_return = {k: t for k, t in named_params if "lora_" in k or "bias" in k}
-    elif bias == "lora_only":
-        to_return = {}
-        maybe_lora_bias = {}
-        lora_bias_names = set()
-        for k, t in named_params:
-            if "lora_" in k:
-                to_return[k] = t
-                bias_name = k.split("lora_")[0] + "bias"
-                lora_bias_names.add(bias_name)
-            elif "bias" in k:
-                maybe_lora_bias[k] = t
-        for k, t in maybe_lora_bias:
-            if bias_name in lora_bias_names:
-                to_return[bias_name] = t
-    else:
-        raise NotImplementedError
-    to_return = {k: maybe_zero_3(v) for k, v in to_return.items()}
-    return to_return
-
 def find_leaf_directories(parent_directory):
     leaf_directories = []
     for item in os.scandir(parent_directory):
@@ -119,16 +94,6 @@ def train_on(model_path, lora_path, lora_config, dataset_config, training_config
     else:
         print("Starting new training.")
         trainer.train()
-        
-    #state_dict = get_peft_state_maybe_zero_3(model.named_parameters(), lora_config["lora_bias"])
-    
-        #try:
-        #logger.info("Creating LoRA model...")
-        #lora_model = get_peft_model(shared.model, config)
-        #if not always_override and Path(f"{lora_file_path}/adapter_model.bin").is_file():
-        #    logger.info("Loading existing LoRA data...")
-        #    state_dict_peft = torch.load(f"{lora_file_path}/adapter_model.bin")
-        #   set_peft_model_state_dict(lora_model, state_dict_peft)
 
     trainer.save_state()
     final_model = lora_model.save_pretrained(save_to)
@@ -173,6 +138,8 @@ def rebuild_dictionaries(
         "ddp_find_unused_parameters": None,
         "output_dir": output_dir,
         "gradient_checkpointing": True,
+        
+        ### Future stuff for distributed training.
         #"fsdp":"full_shard auto_wrap",
         #"fsdp_transformer_layer_cls_to_wrap": 'LlamaDecoderLayer',
         #"local_rank":local_rank,
@@ -184,6 +151,7 @@ def rebuild_dictionaries(
         #     "limit_all_gathers": False,
         # },
         #"deepspeed":"deepspeed.json"
+        
     }
 
     model_path = get_path_from_leaf("models", model_path)
@@ -201,9 +169,9 @@ with gr.Blocks() as interface:
     
     with gr.Row():
         lora_configs = {
-            'r': gr.Slider(value=64, minimum=1, maximum=1024, label="Lora Rank"),
-            'lora_alpha': gr.Slider(value=16, minimum=1, maximum=2048, label="Lora Alpha"),
-            'lora_dropout': gr.Slider(value = 0.05, minimum = 0.0, maximum=1.0, label="Lora Dropout"),
+            'r': gr.Slider(value=8, minimum=1, maximum=1024, label="Lora Rank"),
+            'lora_alpha': gr.Slider(value=8, minimum=1, maximum=2048, label="Lora Alpha"),
+            'lora_dropout': gr.Slider(value = 0.00, minimum = 0.0, maximum=1.0, label="Lora Dropout"),
         }
         
     with gr.Row():
@@ -212,12 +180,12 @@ with gr.Blocks() as interface:
         with gr.Column():
             dataset_configs.append(gr.Textbox(value="text", lines=1, label='Dataset Sample ID'))
     with gr.Row():
-        batch_size = gr.Slider(value=256, minimum=1, maximum=8192, label="Batch Size")
+        batch_size = gr.Slider(value=4, minimum=1, maximum=8192, label="Batch Size")
         training_configs = {
-            "per_device_train_batch_size": gr.Number(value=16, label='Sub Batch Size'),
+            "per_device_train_batch_size": gr.Number(value=2, label='Sub Batch Size'),
             "warmup_steps": gr.Number(value=7, label='Warmup Steps'),
-            "num_train_epochs": gr.Number(value=3, label='Epochs'),
-            "learning_rate": gr.Number(value=2e-4, label='Learning Rate'),
+            "num_train_epochs": gr.Number(value=2, label='Epochs'),
+            "learning_rate": gr.Number(value=1e-4, label='Learning Rate'),
             "optim": gr.Dropdown(value='adamw_torch_fused', lines=1, label='Optimizer', choices=['adamw_hf', 'adamw_torch', 'adamw_torch_fused', 'adamw_torch_xla', 'adamw_apex_fused', 'adafactor', 'adamw_bnb_8bit', 'adamw_anyprecision', 'sgd', 'adagrad']),
             "logging_steps": gr.Number(value=5, label='Logging Steps'),
             "lr_scheduler_type": gr.Dropdown(value='constant_with_warmup', label='Learning Rate Scheduler Type', choices = ['linear', 'constant', 'constant_with_warmup', 'cosine', 'cosine_with_restarts', 'polynomial', 'inverse_sqrt']),
