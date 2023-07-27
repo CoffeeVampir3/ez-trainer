@@ -8,6 +8,7 @@ from datasets import load_dataset
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, TaskType
 from accelerate import infer_auto_device_map
 import pathlib
+import wandb
 
 def find_leaf_directories(parent_directory):
     leaf_directories = []
@@ -59,8 +60,39 @@ def prep_trainer(
     )
     
     return trainer
+
+def prep_trainer_init(
+    model_init,
+    tokenizer,
+    train_dataset,
+    training_configs
+    ):
+    args = TrainingArguments(
+        **training_configs,
+    )
+    
+    trainer = Trainer(
+        model_init=model_init,
+        train_dataset=train_dataset,
+        args=args,
+        data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False),
+    )
+    
+    return trainer
+
+def make_model(model_path, lora_config, gradient_checkpointing):
+    model = AutoModelForCausalLM.from_pretrained(model_path, device_map="auto", load_in_4bit=True)
+    model.gradient_checkpointing_enable()
+    prepare_model_for_kbit_training(model, use_gradient_checkpointing=gradient_checkpointing)
+    lora_model = prep_model_for_lora(model, lora_config)
+    if gradient_checkpointing:
+        lora_model.enable_input_require_grads()
+    lora_model.config.use_cache = False
+    LOADED_MODEL = lora_model
+    return LOADED_MODEL
     
 def train_on(model_path, lora_path, lora_config, dataset_config, training_config):
+    model_path = os.path.abspath(model_path)
     print(model_path)
     [print(f"{x}: {y}") for x,y in lora_config.items()]
     [print(f"{x}: {y}") for x,y in dataset_config.items()]
@@ -70,22 +102,18 @@ def train_on(model_path, lora_path, lora_config, dataset_config, training_config
     
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     tokenizer.pad_token = tokenizer.eos_token
-    model = AutoModelForCausalLM.from_pretrained(model_path, device_map="auto", load_in_4bit=True)
-
-    model.gradient_checkpointing_enable()
-    model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=gradient_checkpointing)
-    lora_model = prep_model_for_lora(model, lora_config)
+    
+    from functools import partial
+    
+    model_init = partial(make_model, model_path=model_path, lora_config=lora_config, gradient_checkpointing=gradient_checkpointing)
+    lora_model = model_init()
     
     dataset = prep_dataset(tokenizer, **dataset_config)
     trainer = prep_trainer(lora_model, tokenizer, dataset["train"], training_config)
     
-    if gradient_checkpointing:
-        lora_model.enable_input_require_grads()
-    
     save_to = training_config["output_dir"]
     os.makedirs(save_to, exist_ok=True)
     
-    lora_model.config.use_cache = False
     #lora_model = torch.compile(lora_model)
     
     if lora_path:
@@ -138,6 +166,9 @@ def rebuild_dictionaries(
         "ddp_find_unused_parameters": None,
         "output_dir": output_dir,
         "gradient_checkpointing": True,
+        "weight_decay":0.1,
+        "do_train":True,
+        "report_to":"none",
         
         ### Future stuff for distributed training.
         #"fsdp":"full_shard auto_wrap",
