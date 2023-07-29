@@ -16,9 +16,6 @@ def find_leaf_files(parent_directory):
         if item.is_file():
             files.append(item.path)
     return files
-    
-def get_path_from_leaf(root, leaf):
-    return os.path.join(root, leaf)
 
 def get_available_from_dir(target):
     return [os.path.basename(x) for x in find_leaf_directories(target)]

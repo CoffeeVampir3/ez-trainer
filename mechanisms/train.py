@@ -9,6 +9,7 @@ from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training, Ta
 from accelerate import infer_auto_device_map
 import pathlib
 import wandb
+from mechanisms.mech_utils import get_path_from_leaf
 
 def prep_dataset(tokenizer, dataset_path, dataset_type, dataset_sample_id):
     dataset = load_dataset(dataset_type, data_files=dataset_path)
@@ -107,7 +108,7 @@ def train_on(model_path, lora_path, lora_config, dataset_config, training_config
     final_model = lora_model.save_pretrained(save_to)
     return final_model
 
-def rebuild_dictionaries(
+def initiate_training(
     model_path, lora_path, lora_r, lora_alpha, lora_dropout, 
     dataset_path, dataset_sample_id, 
     batch_size, per_device_train_batch_size, warmup_steps, num_train_epochs, 
