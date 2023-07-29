@@ -5,6 +5,16 @@ Extremely ugly interface for easy lora training for Llama models. Put your model
 
 Datasets are expected to be json or jsonl format right now. Models should be the unquantized huggingface format. More info soon, maybe.
 
+# Features:
+
+### Training:
+
+Train Loras for Llama. See wiki.
+
+### Merging
+
+Merge your Loras back into Llama if you want. Supports strength-based merging.
+
 # Check out the wiki for usage info
 
 <https://github.com/CoffeeVampir3/ez-trainer/wiki/Train-the-Stuff-and-Stuff#crash-course>
