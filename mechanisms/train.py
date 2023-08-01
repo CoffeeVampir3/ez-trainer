@@ -11,12 +11,14 @@ import pathlib
 import wandb
 from mechanisms.mech_utils import get_path_from_leaf
 
-def prep_dataset(tokenizer, dataset_path, dataset_type, dataset_sample_id):
+def prep_dataset(tokenizer, dataset_path, dataset_type, dataset_validation_split, dataset_sample_id):
     dataset = load_dataset(dataset_type, data_files=dataset_path)
-    td = dataset
-    data = td.map(lambda samples: tokenizer(samples[dataset_sample_id]), batched=True)
+    dataset = dataset["train"].train_test_split(test_size=dataset_validation_split)
+    data = dataset.map(lambda samples: tokenizer(samples[dataset_sample_id]), batched=True)
     
-    return data
+    train_data = data['train']
+    test_data = data['test']
+    return train_data, test_data
 
 def prep_model_for_lora(model, lora_configs):
     config = LoraConfig(**lora_configs)
@@ -27,6 +29,7 @@ def prep_trainer(
     model,
     tokenizer,
     train_dataset,
+    test_dataset,
     training_configs
     ):
     args = TrainingArguments(
@@ -36,6 +39,7 @@ def prep_trainer(
     trainer = Trainer(
         model = model,
         train_dataset=train_dataset,
+        eval_dataset=test_dataset,
         args=args,
         data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False),
     )
@@ -89,8 +93,8 @@ def train_on(model_path, lora_path, lora_config, dataset_config, training_config
     model_init = partial(make_model, model_path=model_path, lora_config=lora_config, gradient_checkpointing=gradient_checkpointing)
     lora_model = model_init()
     
-    dataset = prep_dataset(tokenizer, **dataset_config)
-    trainer = prep_trainer(lora_model, tokenizer, dataset["train"], training_config)
+    train, test = prep_dataset(tokenizer, **dataset_config)
+    trainer = prep_trainer(lora_model, tokenizer, train, test, training_config)
     
     save_to = training_config["output_dir"]
     os.makedirs(save_to, exist_ok=True)
@@ -110,9 +114,9 @@ def train_on(model_path, lora_path, lora_config, dataset_config, training_config
 
 def initiate_training(
     model_path, lora_path, lora_r, lora_alpha, lora_dropout, 
-    dataset_path, dataset_sample_id, 
-    batch_size, per_device_train_batch_size, warmup_steps, num_train_epochs, 
-    learning_rate, optim, logging_steps, lr_scheduler_type, output_dir):
+    dataset_path, dataset_validation_split, dataset_sample_id, 
+    batch_size, gradient_accumulation_steps, num_train_epochs, 
+    learning_rate, weight_decay, warmup_steps, optim, lr_scheduler_type, output_dir, eval_steps, logging_steps):
 
     lora_configs = {
         'r': int(lora_r),
@@ -127,14 +131,15 @@ def initiate_training(
         "dataset_path": get_path_from_leaf("datasets", dataset_path),
         "dataset_type":"json",
         "dataset_sample_id": dataset_sample_id,
+        "dataset_validation_split": float(dataset_validation_split),
     }
 
     training_configs = {
         "save_strategy": IntervalStrategy.STEPS,
         "save_steps": 30,
         "save_total_limit": 5,
-        "per_device_train_batch_size": int(per_device_train_batch_size),
-        "gradient_accumulation_steps": int(batch_size//per_device_train_batch_size),
+        "per_device_train_batch_size": int(batch_size),
+        "gradient_accumulation_steps": int(gradient_accumulation_steps),
         "warmup_steps": int(warmup_steps),
         "num_train_epochs": int(num_train_epochs),
         "learning_rate": float(learning_rate),
@@ -142,12 +147,13 @@ def initiate_training(
         "tf32": True,
         "optim": optim,
         "logging_steps": int(logging_steps),
-        "evaluation_strategy": "no",
+        "evaluation_strategy": "steps",
+        "eval_steps": eval_steps,
+        "per_device_eval_batch_size": int(batch_size),
         "lr_scheduler_type": lr_scheduler_type,
-        "ddp_find_unused_parameters": None,
         "output_dir": output_dir,
         "gradient_checkpointing": True,
-        "weight_decay":0.1,
+        "weight_decay":weight_decay,
         "do_train":True,
         "report_to":"none",
         
@@ -163,6 +169,7 @@ def initiate_training(
         #     "limit_all_gathers": False,
         # },
         #"deepspeed":"deepspeed.json"
+        #"ddp_find_unused_parameters": None,
         
     }
 

@@ -56,17 +56,15 @@ def get_lora_scaling(lora_model):
     return scaling
 
 def load_model(model_path, lora_path):
-    device_arg = { 'device_map': 'auto' }
-    
     base_model = AutoModelForCausalLM.from_pretrained(
         model_path,
         return_dict=True,
         torch_dtype=torch.float16,
-        **device_arg
+        device_map = "auto",
     )
 
     print(f"Loading PEFT: {lora_path}")
-    lora_model = PeftModel.from_pretrained(base_model, lora_path, **device_arg)
+    lora_model = PeftModel.from_pretrained(base_model, lora_path)
     
     return base_model, lora_model
 
@@ -88,6 +86,7 @@ def initiate_model_lora_merge(model_path, lora_path, output_dir, merge_weight):
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     final_model = base_model.save_pretrained(output_dir, use_safetensors=True)
     tokenizer.save_pretrained(output_dir)
+
     
     print("Done merging.")
     return final_model
