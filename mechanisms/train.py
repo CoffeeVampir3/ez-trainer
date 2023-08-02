@@ -46,7 +46,7 @@ def prep_trainer(
     
     return trainer
 
-def prep_trainer_init(
+""" def prep_trainer_init(
     model_init,
     tokenizer,
     train_dataset,
@@ -63,7 +63,7 @@ def prep_trainer_init(
         data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False),
     )
     
-    return trainer
+    return trainer """
 
 def make_model(model_path, lora_config, gradient_checkpointing):
     model = AutoModelForCausalLM.from_pretrained(model_path, device_map="auto", load_in_4bit=True)
@@ -85,7 +85,7 @@ def train_on(model_path, lora_path, lora_config, dataset_config, training_config
     
     gradient_checkpointing = training_config["gradient_checkpointing"]
     
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
+    tokenizer = AutoTokenizer.from_pretrained(model_path, padding=False, legacy=False, use_fast=False) ##Fast version is potentially bugged right now.
     tokenizer.pad_token = tokenizer.eos_token
     
     from functools import partial
@@ -148,14 +148,14 @@ def initiate_training(
         "optim": optim,
         "logging_steps": int(logging_steps),
         "evaluation_strategy": "steps",
-        "eval_steps": eval_steps,
+        "eval_steps": int(eval_steps),
         "per_device_eval_batch_size": int(batch_size),
         "lr_scheduler_type": lr_scheduler_type,
         "output_dir": output_dir,
         "gradient_checkpointing": True,
-        "weight_decay":weight_decay,
+        "weight_decay": float(weight_decay),
         "do_train":True,
-        "report_to":"none",
+        "report_to":"tensorboard",
         
         ### Future stuff for distributed training.
         #"fsdp":"full_shard auto_wrap",
