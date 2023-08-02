@@ -10,6 +10,7 @@ from accelerate import infer_auto_device_map
 import pathlib
 import wandb
 from mechanisms.mech_utils import get_path_from_leaf
+import bitsandbytes as bnb
 
 def prep_dataset(tokenizer, dataset_path, dataset_type, dataset_validation_split, dataset_sample_id):
     dataset = load_dataset(dataset_type, data_files=dataset_path)
@@ -46,29 +47,38 @@ def prep_trainer(
     
     return trainer
 
-""" def prep_trainer_init(
-    model_init,
-    tokenizer,
-    train_dataset,
-    training_configs
-    ):
-    args = TrainingArguments(
-        **training_configs,
-    )
-    
-    trainer = Trainer(
-        model_init=model_init,
-        train_dataset=train_dataset,
-        args=args,
-        data_collator=DataCollatorForLanguageModeling(tokenizer, mlm=False),
-    )
-    
-    return trainer """
+#from qlora and axolotl
+def find_all_linear_names(bits, model):
+    linear_class = torch.nn.Linear
+    if bits == 4:
+        linear_class = bnb.nn.Linear4bit
+    if bits == 8:
+        linear_class = bnb.nn.Linear8bitLt
+        
+    lora_module_names = set()
+    for name, module in model.named_modules():
+        if isinstance(module, linear_class):
+            names = name.split(".")
+            lora_module_names.add(names[0] if len(names) == 1 else names[-1])
+
+    if "lm_head" in lora_module_names:
+        lora_module_names.remove("lm_head")
+
+    return list(lora_module_names)
 
 def make_model(model_path, lora_config, gradient_checkpointing):
     model = AutoModelForCausalLM.from_pretrained(model_path, device_map="auto", load_in_4bit=True)
-    model.gradient_checkpointing_enable()
+    model.gradient_checkpointing_enable() 
+    
     prepare_model_for_kbit_training(model, use_gradient_checkpointing=gradient_checkpointing)
+    
+    target_modules = lora_config['target_modules']
+    linear_layer_names = find_all_linear_names(4, model)
+    target_modules_and_linears = list(set(target_modules + linear_layer_names))
+    lora_config['target_modules'] = target_modules_and_linears
+    
+    [print(f"{x}: {y}") for x,y in lora_config.items()]
+    
     lora_model = prep_model_for_lora(model, lora_config)
     if gradient_checkpointing:
         lora_model.enable_input_require_grads()
@@ -79,7 +89,7 @@ def make_model(model_path, lora_config, gradient_checkpointing):
 def train_on(model_path, lora_path, lora_config, dataset_config, training_config):
     model_path = os.path.abspath(model_path)
     print(model_path)
-    [print(f"{x}: {y}") for x,y in lora_config.items()]
+    #[print(f"{x}: {y}") for x,y in lora_config.items()]
     [print(f"{x}: {y}") for x,y in dataset_config.items()]
     [print(f"{x}: {y}") for x,y in training_config.items()]
     

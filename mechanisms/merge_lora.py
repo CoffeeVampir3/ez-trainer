@@ -63,9 +63,10 @@ def load_model(model_path, lora_path):
         device_map = "auto",
     )
 
+    print(base_model.torch_dtype)
     print(f"Loading PEFT: {lora_path}")
     lora_model = PeftModel.from_pretrained(base_model, lora_path)
-    
+    base_model.config.use_cache = True
     return base_model, lora_model
 
 def initiate_model_lora_merge(model_path, lora_path, output_dir, merge_weight):
@@ -86,7 +87,6 @@ def initiate_model_lora_merge(model_path, lora_path, output_dir, merge_weight):
     tokenizer = AutoTokenizer.from_pretrained(model_path)
     final_model = base_model.save_pretrained(output_dir, use_safetensors=True)
     tokenizer.save_pretrained(output_dir)
-
     
     print("Done merging.")
     return final_model
