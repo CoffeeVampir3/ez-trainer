@@ -66,10 +66,11 @@ def find_all_linear_names(bits, model):
 
     return list(lora_module_names)
 
-def make_model(model_path, lora_config, gradient_checkpointing):
-    model = AutoModelForCausalLM.from_pretrained(model_path, device_map="auto", load_in_4bit=True)
+def make_model(model_path, lora_config, devices, gradient_checkpointing):
+    model = AutoModelForCausalLM.from_pretrained(model_path, device_map=devices, load_in_4bit=True)
     model.gradient_checkpointing_enable() 
     
+    print(model.hf_device_map)
     prepare_model_for_kbit_training(model, use_gradient_checkpointing=gradient_checkpointing)
     
     target_modules = lora_config['target_modules']
@@ -86,7 +87,7 @@ def make_model(model_path, lora_config, gradient_checkpointing):
     LOADED_MODEL = lora_model
     return LOADED_MODEL
     
-def train_on(model_path, lora_path, lora_config, dataset_config, training_config):
+def train_on(model_path, lora_path, devices, lora_config, dataset_config, training_config):
     model_path = os.path.abspath(model_path)
     print(model_path)
     #[print(f"{x}: {y}") for x,y in lora_config.items()]
@@ -100,7 +101,7 @@ def train_on(model_path, lora_path, lora_config, dataset_config, training_config
     
     from functools import partial
     
-    model_init = partial(make_model, model_path=model_path, lora_config=lora_config, gradient_checkpointing=gradient_checkpointing)
+    model_init = partial(make_model, model_path=model_path, lora_config=lora_config, devices=devices, gradient_checkpointing=gradient_checkpointing)
     lora_model = model_init()
     
     train, test = prep_dataset(tokenizer, **dataset_config)
@@ -123,7 +124,7 @@ def train_on(model_path, lora_path, lora_config, dataset_config, training_config
     return final_model
 
 def initiate_training(
-    model_path, lora_path, lora_r, lora_alpha, lora_dropout, 
+    model_path, lora_path, target_devices, lora_r, lora_alpha, lora_dropout, 
     dataset_path, dataset_validation_split, dataset_sample_id, 
     batch_size, gradient_accumulation_steps, num_train_epochs, 
     learning_rate, weight_decay, warmup_steps, optim, lr_scheduler_type, output_dir, eval_steps, logging_steps):
@@ -182,9 +183,12 @@ def initiate_training(
         #"ddp_find_unused_parameters": None,
         
     }
-
+    
+    from mechanisms.mech_utils import pick_devices
+    devices = pick_devices(target_devices)
+        
     model_path = get_path_from_leaf("models", model_path)
     if lora_path:
         lora_path = get_path_from_leaf("loras", lora_path)
-
-    return train_on(model_path, lora_path, lora_configs, dataset_configs, training_configs)
+    
+    return train_on(model_path, lora_path, devices, lora_configs, dataset_configs, training_configs)

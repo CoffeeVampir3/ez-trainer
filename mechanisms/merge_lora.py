@@ -2,6 +2,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 import torch
 from mechanisms.mech_utils import get_path_from_leaf
+from mechanisms.mech_utils import pick_devices
 import sys, os
 
 def merge(base_model, lora_model, scaling, merge_weight=1.0):
@@ -55,28 +56,29 @@ def get_lora_scaling(lora_model):
     scaling = alpha/r
     return scaling
 
-def load_model(model_path, lora_path):
+def load_model(model_path, lora_path, devices):
     base_model = AutoModelForCausalLM.from_pretrained(
         model_path,
         return_dict=True,
         torch_dtype=torch.float16,
-        device_map = "auto",
+        device_map = devices,
     )
 
-    print(base_model.torch_dtype)
-    print(f"Loading PEFT: {lora_path}")
     lora_model = PeftModel.from_pretrained(base_model, lora_path)
     base_model.config.use_cache = True
     return base_model, lora_model
 
-def initiate_model_lora_merge(model_path, lora_path, output_dir, merge_weight):
+def initiate_model_lora_merge(model_path, lora_path, devices, output_dir, merge_weight):
     model_path = get_path_from_leaf("models", model_path)
     lora_path = get_path_from_leaf("loras", lora_path)
     
     print(model_path)
     print(lora_path)
+    
+    devices = pick_devices(devices)
+    print(devices)
 
-    base_model, lora_model = load_model(model_path, lora_path)
+    base_model, lora_model = load_model(model_path, lora_path, devices)
     scaling = get_lora_scaling(lora_model)
     
     print(f"Lora Scaling: {scaling}")
